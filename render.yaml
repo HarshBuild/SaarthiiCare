@@ -12,25 +12,15 @@ services:
       - key: APP_ENV
         value: production
       - key: CORS_ORIGINS
-        value: "*" # Update this to your frontend URL after first deploy
-      - key: DATABASE_URL
-        sync: false # Set this in Render Dashboard
+        value: "*"
       - key: SECRET_KEY
         generateValue: true
 
   # --- Frontend: Vite ---
-  - type: web
+  - type: static
     name: saarthii-web
-    runtime: static
-    buildCommand: npm install && npm run build
-    publishPath: dist
-    rootDirectory: frontend
-    envVars:
-      - key: VITE_API_BASE_URL
-        fromService:
-          name: saarthii-api
-          type: web
-          property: host
+    buildCommand: cd frontend && npm install && npm run build
+    publishPath: frontend/dist
     routes:
       - type: rewrite
         source: /*
