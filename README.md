@@ -6,11 +6,11 @@
 [![Status](https://img.shields.io/badge/Status-Production%20Ready-success?style=for-the-badge&logo=appveyor)]()
 [![Frontend](https://img.shields.io/badge/Frontend-React%20%2F%20Vite%20%2F%20TailwindCSS-blue?style=for-the-badge&logo=react)]()
 [![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2F%20Python%203.11-green?style=for-the-badge&logo=fastapi)]()
-[![Database](https://img.shields.io/badge/Database%20%2F%20Auth-Supabase%20%2F%20PostgreSQL-orange?style=for-the-badge&logo=supabase)]()
-[![Deployment](https://img.shields.io/badge/Hosting-Cloudflare%20Pages%20%2B%2520Render-purple?style=for-the-badge&logo=cloudflare)]()
+[![Database](https://img.shields.io/badge/Database%2FAuth-Supabase%20%2F%20PostgreSQL-orange?style=for-the-badge&logo=supabase)]()
+[![Deployment](https://img.shields.io/badge/Hosting-Render%2BCloudflare%20%28Frontend%20on%20Render%29-purple?style=for-the-badge&logo=cloudflare)]()
 [![License](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)]()
 
-[Live Demo](https://saarthii-web.pages.dev) • [Deployment Guide](./DEPLOYMENT.md) • [Project Structure](./PROJECT_STRUCTURE.md)
+[Live Demo](https://saarthiicare-frontend.onrender.com) • [Deployment Guide](./DEPLOYMENT.md) • [Project Structure](./PROJECT_STRUCTURE.md)
 
 </div>
 
@@ -71,7 +71,7 @@ It establishes a **backend-authoritative closed-loop referral workflow** that tr
 1. **True Closed-Loop Tracking**: Unlike traditional hospital management systems (HMS) that stop at hospital gates, SaarthiCare bridges the journey *between* rural PHCs and urban hospitals.
 2. **Strict RLS & Data Sovereignty**: Leverages PostgreSQL Row Level Security (RLS) ensuring PHCs only see their referred patients while specialists manage their incoming queues.
 3. **Optimized for Low-Bandwidth Environments**: Lightweight Vite frontend with cached state management ensures responsiveness even on rural cellular networks.
-4. **Zero Vendor Lock-In**: Built on an open stack (FastAPI, React, PostgreSQL/Supabase) deployable on standard cloud infrastructure (Cloudflare Pages + Render).
+4. **Zero Vendor Lock-In**: Built on an open stack (FastAPI, React, PostgreSQL/Supabase) deployable on standard cloud infrastructure (Render + Cloudflare Pages).
 
 ---
 
@@ -107,7 +107,7 @@ graph TD
 - **Backend**: FastAPI, Python 3.11+, Pydantic v2, Uvicorn, Python-Jose (JWT).
 - **Database & Auth**: Supabase PostgreSQL, Row Level Security (RLS), Supabase Auth.
 - **Testing**: Pytest, FastAPI TestClient.
-- **Deployment & Hosting**: Cloudflare Pages (Frontend), Render (Backend).
+- **Deployment & Hosting**: Render (Frontend + Backend), Cloudflare Pages (CDN & SPA Routing).
 
 ---
 
