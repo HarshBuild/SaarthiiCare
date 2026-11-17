@@ -7,6 +7,7 @@ import React, {
   useState,
 } from 'react'
 import { supabase } from '../lib/supabaseClient'
+import { createAuthActions } from '../services/authActions'
 
 const AuthContext = createContext(null)
 
@@ -43,6 +44,18 @@ function buildProfile(authUser, profileRow) {
     role: profileRow.role,
     facility_ids: profileRow.facility_ids || [],
     facility_name: profileRow.facility_name || null,
+  }
+}
+
+/** Shape a FastAPI legacy login response into the app's profile model. */
+function buildLegacyProfile(legacyUser) {
+  return {
+    id: legacyUser.id,
+    email: legacyUser.email,
+    full_name: legacyUser.full_name || legacyUser.email?.split('@')[0] || 'User',
+    role: legacyUser.role || 'phc_staff',
+    facility_ids: legacyUser.facility_id ? [legacyUser.facility_id] : [],
+    facility_name: legacyUser.facility_name || null,
   }
 }
 
@@ -108,6 +121,18 @@ export function AuthProvider({ children }) {
 
   const initialise = useCallback(async () => {
     if (!supabaseAvailable) {
+      // Legacy backend mode: restore the user saved by the FastAPI login
+      // fallback so protected routes work without Supabase configured.
+      try {
+        const raw = localStorage.getItem('saarthii_user')
+        const legacyUser = raw ? JSON.parse(raw) : null
+        if (legacyUser?.id || legacyUser?.email) {
+          setUser(legacyUser)
+          setProfile(buildLegacyProfile(legacyUser))
+        }
+      } catch {
+        localStorage.removeItem('saarthii_user')
+      }
       setLoading(false)
       return
     }
@@ -178,9 +203,66 @@ export function AuthProvider({ children }) {
     if (supabaseAvailable) {
       await supabase.auth.signOut()
     }
+    localStorage.removeItem('saarthii_token')
+    localStorage.removeItem('saarthii_user')
     setUser(null)
     setProfile(null)
   }, [supabaseAvailable])
+
+  /**
+   * Adopt a FastAPI legacy login result. Used when Supabase is not configured
+   * so protected routes and the dashboard shell work against the backend.
+   */
+  const adoptLegacySession = useCallback((legacyUser, accessToken) => {
+    if (legacyUser) {
+      localStorage.setItem('saarthii_user', JSON.stringify(legacyUser))
+    }
+    if (accessToken) {
+      localStorage.setItem('saarthii_token', accessToken)
+    }
+    setUser(legacyUser || null)
+    setProfile(legacyUser ? buildLegacyProfile(legacyUser) : null)
+  }, [])
+
+  const requireSupabase = useCallback(() => {
+    if (!supabaseAvailable) {
+      throw new Error(
+        'Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY to frontend/.env.',
+      )
+    }
+  }, [supabaseAvailable])
+
+  const signUp = useCallback(
+    async (payload) => {
+      requireSupabase()
+      return createAuthActions(supabase).signUp(payload)
+    },
+    [requireSupabase],
+  )
+
+  const requestPasswordReset = useCallback(
+    async (email, redirectTo) => {
+      requireSupabase()
+      return createAuthActions(supabase).requestPasswordReset(email, redirectTo)
+    },
+    [requireSupabase],
+  )
+
+  const updatePassword = useCallback(
+    async (newPassword) => {
+      requireSupabase()
+      return createAuthActions(supabase).updatePassword(newPassword)
+    },
+    [requireSupabase],
+  )
+
+  const resendConfirmation = useCallback(
+    async (email, redirectTo) => {
+      requireSupabase()
+      return createAuthActions(supabase).resendConfirmation(email, redirectTo)
+    },
+    [requireSupabase],
+  )
 
   const value = useMemo(
     () => ({
@@ -192,8 +274,27 @@ export function AuthProvider({ children }) {
       signIn,
       signOut,
       refreshProfile,
+      signUp,
+      requestPasswordReset,
+      updatePassword,
+      resendConfirmation,
+      adoptLegacySession,
     }),
-    [user, profile, loading, error, supabaseAvailable, signIn, signOut, refreshProfile],
+    [
+      user,
+      profile,
+      loading,
+      error,
+      supabaseAvailable,
+      signIn,
+      signOut,
+      refreshProfile,
+      signUp,
+      requestPasswordReset,
+      updatePassword,
+      resendConfirmation,
+      adoptLegacySession,
+    ],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

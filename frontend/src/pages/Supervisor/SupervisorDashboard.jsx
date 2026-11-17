@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { 
   FileText, Calendar, AlertCircle, CheckCircle, Clock, UserPlus, 
-  ClipboardCheck, TrendingUp, BarChart3, Activity, Shield, Users, MapPin 
+  ClipboardCheck, TrendingUp, BarChart3, Activity, Users, MapPin, RefreshCw 
 } from 'lucide-react'
 import Card, { CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
@@ -43,15 +43,15 @@ export default function SupervisorDashboard() {
   }
 
   const stats = analytics ? [
-    { label: 'Referrals this Month', value: analytics.total_referrals.toString(), change: 0 },
-    { label: 'Avg Closure Time', value: `${analytics.avg_closure_time_days}d`, change: 0 },
-    { label: 'Overdue Cases', value: analytics.overdue_count.toString(), change: 0 },
-    { label: 'Closure Rate', value: `${analytics.total_closure_rate}%`, change: 0 },
+    { label: 'Referrals this Month', value: analytics.total_referrals.toString(), change: 0, icon: FileText },
+    { label: 'Avg Closure Time', value: `${analytics.avg_closure_time_days}d`, change: 0, icon: Clock },
+    { label: 'Overdue Cases', value: analytics.overdue_count.toString(), change: 0, icon: AlertCircle },
+    { label: 'Closure Rate', value: `${analytics.total_closure_rate}%`, change: 0, icon: CheckCircle },
   ] : [
-    { label: 'Referrals this Month', value: '-', change: 0 },
-    { label: 'Avg Closure Time', value: '-', change: 0 },
-    { label: 'Overdue Cases', value: '-', change: 0 },
-    { label: 'Closure Rate', value: '-', change: 0 },
+    { label: 'Referrals this Month', value: '-', change: 0, icon: FileText },
+    { label: 'Avg Closure Time', value: '-', change: 0, icon: Clock },
+    { label: 'Overdue Cases', value: '-', change: 0, icon: AlertCircle },
+    { label: 'Closure Rate', value: '-', change: 0, icon: CheckCircle },
   ]
 
   const facilities = analytics?.facilities || []
@@ -74,42 +74,55 @@ export default function SupervisorDashboard() {
             label={stat.label}
             value={stat.value}
             change={stat.change}
-            icon={stat.change >= 0 ? TrendingUp : AlertCircle}
-            variant={stat.change >= 0 ? 'teal' : 'warning'}
+            icon={stat.icon}
+            variant="teal"
           />
         ))}
       </div>
 
+      {error && (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <Alert variant="danger" title="Could not load analytics" message={error} className="flex-1" />
+          <Button variant="outline" size="sm" onClick={fetchData}>
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      )}
+
       {/* Quick Actions */}
       <div className="grid gap-4 sm:grid-cols-3">
-        <Link to="/supervisor-dashboard" className="block">
-          <Card hoverable>
-            <CardContent className="p-4 text-center">
-              <BarChart3 className="mx-auto mb-2 h-8 w-8 text-teal-600" />
-              <p className="text-sm font-medium text-slate-900">Analytics Reports</p>
-            </CardContent>
-          </Card>
-        </Link>
         <Link to="/referrals" className="block">
           <Card hoverable>
             <CardContent className="p-4 text-center">
-              <Shield className="mx-auto mb-2 h-8 w-8 text-teal-600" />
-              <p className="text-sm font-medium text-slate-900">Quality Audits</p>
+              <FileText className="mx-auto mb-2 h-8 w-8 text-teal-600" />
+              <p className="text-sm font-medium text-slate-900">Referral register</p>
+              <p className="mt-0.5 text-xs text-slate-500">Search and filter every referral</p>
             </CardContent>
           </Card>
         </Link>
+        <a href="#facility-performance" className="block">
+          <Card hoverable>
+            <CardContent className="p-4 text-center">
+              <BarChart3 className="mx-auto mb-2 h-8 w-8 text-teal-600" />
+              <p className="text-sm font-medium text-slate-900">Facility performance</p>
+              <p className="mt-0.5 text-xs text-slate-500">Closure rates by receiving facility</p>
+            </CardContent>
+          </Card>
+        </a>
         <Link to="/settings" className="block">
           <Card hoverable>
             <CardContent className="p-4 text-center">
               <Users className="mx-auto mb-2 h-8 w-8 text-teal-600" />
-              <p className="text-sm font-medium text-slate-900">Facility Management</p>
+              <p className="text-sm font-medium text-slate-900">Settings & access</p>
+              <p className="mt-0.5 text-xs text-slate-500">Profile and facility assignment</p>
             </CardContent>
           </Card>
         </Link>
       </div>
 
       {/* Facility Performance */}
-      <Card>
+      <Card id="facility-performance">
         <CardHeader>
           <CardTitle>Facility Performance</CardTitle>
           <CardDescription>
@@ -139,7 +152,9 @@ export default function SupervisorDashboard() {
                     <div className="flex items-center gap-3">
                       <div className="flex-1">
                         <p className="font-medium text-slate-900">{facility.facility_name}</p>
-                        <p className="text-xs text-slate-500">{facility.facility_type}</p>
+                        <p className="text-xs capitalize text-slate-500">
+                          {facility.facility_type?.replace(/_/g, ' ') || 'facility'}
+                        </p>
                       </div>
                       <div className="text-center">
                         <p className="text-sm font-bold text-slate-900">{facility.referrals_total}</p>
@@ -171,6 +186,23 @@ export default function SupervisorDashboard() {
       </Card>
 
       {/* Overdue Referrals Alert */}
+      {!loading && !error && overdueReferrals.length === 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Overdue referrals</CardTitle>
+            <CardDescription>Referrals requiring immediate supervisor attention</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3 rounded-xl bg-emerald-50 px-4 py-3">
+              <CheckCircle className="h-5 w-5 text-emerald-600" />
+              <p className="text-sm text-emerald-800">
+                No overdue referrals right now. Every open referral is within its expected window.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {!loading && overdueReferrals.length > 0 && (
         <Card>
           <CardHeader>

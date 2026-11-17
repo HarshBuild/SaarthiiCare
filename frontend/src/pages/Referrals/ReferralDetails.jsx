@@ -1,30 +1,75 @@
-import React, { useState, useEffect } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { 
-  FileText, Calendar, Shield, Stethoscope, ShieldCheck, Clock, 
-  AlertCircle, CheckCircle, ArrowLeft, User, Heart, Activity, TrendingUp 
+import {
+  Calendar,
+  Shield,
+  ShieldCheck,
+  Clock,
+  AlertCircle,
+  CheckCircle2,
+  ArrowLeft,
+  User,
+  Heart,
+  Activity,
+  RefreshCw,
+  FileText,
+  Stethoscope,
+  Waypoints,
 } from 'lucide-react'
-import Card, { CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/Card'
+import Card, { CardHeader, CardTitle, CardDescription, CardContent } from '../../components/ui/Card'
 import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Alert from '../../components/ui/Alert'
 import { useToast } from '../../components/ui/Toast'
+import { useAuth } from '../../contexts/AuthContext'
 import { ReferralDetailsClient } from '../../services/referralsService'
+import ReferralTimeline from '../../components/layout/ReferralTimeline'
+import WorkflowProgress from '../../components/referrals/WorkflowProgress'
+import { getStatusMeta, isTerminalStatus } from '../../utils/referralStatus'
+
+const MISSING_ACTION_LABELS = {
+  OUTCOME_NOT_RECORDED: 'Treatment outcome',
+  BACK_REFERRAL_PENDING: 'Back-referral report',
+  FOLLOW_UP_PENDING: 'Follow-up task',
+}
+
+const MISSING_ACTION_ICONS = {
+  OUTCOME_NOT_RECORDED: Heart,
+  BACK_REFERRAL_PENDING: Shield,
+  FOLLOW_UP_PENDING: Calendar,
+}
+
+function formatDate(value) {
+  if (!value) return 'N/A'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? 'N/A' : date.toLocaleDateString('en-IN')
+}
+
+function InfoRow({ label, value }) {
+  return (
+    <div>
+      <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+      <p className="text-sm font-medium text-slate-900">{value || 'N/A'}</p>
+    </div>
+  )
+}
 
 export default function ReferralDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
   const toast = useToast()
+  const { profile } = useAuth()
+  const isHospital = profile?.role === 'hospital_staff'
+
   const [referral, setReferral] = useState(null)
   const [closureCheck, setClosureCheck] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [closing, setClosing] = useState(false)
 
-  useEffect(() => {
-    fetchReferralDetails()
-  }, [id])
-
-  const fetchReferralDetails = async () => {
+  const fetchReferralDetails = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
@@ -34,9 +79,9 @@ export default function ReferralDetails() {
       // Closure intelligence is supplementary: a failure here should not hide
       // the referral record itself.
       try {
-        const rci = await ReferralDetailsClient.checkClosure(id)
-        setClosureCheck(rci)
-      } catch (closureError) {
+        const check = await ReferralDetailsClient.checkClosure(id)
+        setClosureCheck(check)
+      } catch {
         setClosureCheck(null)
       }
     } catch (err) {
@@ -44,36 +89,43 @@ export default function ReferralDetails() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
+
+  useEffect(() => {
+    fetchReferralDetails()
+  }, [fetchReferralDetails])
 
   const handleCloseReferral = async () => {
+    setClosing(true)
     try {
       await ReferralDetailsClient.close(id)
       toast.success('Referral closed successfully.', 'Closed')
-      fetchReferralDetails()
+      await fetchReferralDetails()
     } catch (err) {
       if (err.response?.status === 422) {
-        toast.error(err.response.data.detail || 'Closure requirements are not met.', 'Cannot close referral')
+        toast.error(
+          err.response.data.detail || 'Closure requirements are not met.',
+          'Cannot close referral',
+        )
       } else {
         toast.error('Failed to close referral. Please try again.')
       }
+    } finally {
+      setClosing(false)
     }
   }
 
   if (loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center gap-2">
-          <Link to="/referrals">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <h1 className="text-2xl font-bold text-slate-900">Referral Details</h1>
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 animate-pulse rounded-xl bg-slate-200" />
+          <div className="h-7 w-56 animate-pulse rounded-lg bg-slate-200" />
         </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="h-8 bg-slate-200/60 rounded-xl animate-pulse" />
-          <div className="h-64 bg-slate-200/60 rounded-xl animate-pulse" />
+        <div className="h-28 animate-pulse rounded-2xl bg-slate-100" />
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="h-64 animate-pulse rounded-2xl bg-slate-100 lg:col-span-2" />
+          <div className="h-64 animate-pulse rounded-2xl bg-slate-100" />
         </div>
       </div>
     )
@@ -81,268 +133,351 @@ export default function ReferralDetails() {
 
   if (error || !referral) {
     return (
-      <div className="space-y-6">
-        <Alert variant="danger" title="Error" message={error || 'Referral not found'} />
-        <Link to="/referrals">
-          <Button>Back to Referrals</Button>
-        </Link>
+      <div className="space-y-4">
+        <Alert
+          variant="danger"
+          title="Referral unavailable"
+          message={error || 'Referral not found.'}
+        />
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={fetchReferralDetails}>
+            <RefreshCw className="h-4 w-4" />
+            Retry
+          </Button>
+          <Link to="/referrals">
+            <Button variant="ghost">Back to referrals</Button>
+          </Link>
+        </div>
       </div>
     )
   }
 
-  const statusConfig = {
-    draft: { color: 'default', label: 'Draft' },
-    issued: { color: 'info', label: 'Issued' },
-    pending_ack: { color: 'warning', label: 'Pending Acknowledgement' },
-    acknowledged: { color: 'info', label: 'Acknowledged' },
-    arrived: { color: 'teal', label: 'Patient Arrived' },
-    outcome_recorded: { color: 'success', label: 'Outcome Recorded' },
-    back_referral_pending: { color: 'warning', label: 'Back Referral Pending' },
-    back_referral_completed: { color: 'success', label: 'Back Referral Completed' },
-    follow_up_pending: { color: 'warning', label: 'Follow Up Pending' },
-    follow_up_completed: { color: 'success', label: 'Follow Up Completed' },
-    closed: { color: 'success', label: 'Closed' },
-    rejected: { color: 'danger', label: 'Rejected' },
-    cancelled: { color: 'default', label: 'Cancelled' },
-  }
-
-  const status = statusConfig[referral.status] || { color: 'default', label: referral.status }
+  const meta = getStatusMeta(referral.status)
+  const terminal = isTerminalStatus(referral.status)
+  const eligible = Boolean(closureCheck?.eligible_for_closure)
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Link to="/referrals">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <Link to="/referrals" aria-label="Back to referrals">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <h1 className="text-2xl font-bold text-slate-900">Referral Details</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="truncate font-mono text-xl font-bold tracking-tight text-slate-900">
+                {referral.referral_number || referral.id}
+              </h1>
+              <Badge variant={meta.variant}>{meta.label}</Badge>
+            </div>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {referral.patient_name} · {referral.specialty?.replace(/_/g, ' ') || 'Specialty not set'}
+            </p>
+          </div>
         </div>
-        <Badge variant={status.color}>{status.label}</Badge>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={fetchReferralDetails}>
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(`/qr/${id}`)}>
+            <FileText className="h-4 w-4" />
+            QR reference
+          </Button>
+        </div>
       </div>
 
-      {/* Referral Information Card */}
+      {/* Workflow */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-start gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
+              <Waypoints className="h-5 w-5" />
+            </span>
+            <div>
+              <CardTitle>Referral workflow</CardTitle>
+              <CardDescription>Created → Submitted → Accepted → Appointment → Consultation → Follow-up → Closed</CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <WorkflowProgress status={referral.status} />
+        </CardContent>
+      </Card>
+
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-4 lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Referral Information</CardTitle>
+              <CardTitle>Referral information</CardTitle>
               <CardDescription>
-                Referral {referral.referral_number || '—'}
-                {referral.created_at ? ` • Created ${new Date(referral.created_at).toLocaleDateString()}` : ''}
+                Created {formatDate(referral.created_at)}
+                {referral.patient_id ? ` · Patient ${referral.patient_id}` : ''}
               </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Patient ID / ABHA</p>
-                  <p className="font-medium text-slate-900">{referral.patient_id || referral.abha_id || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Patient Name</p>
-                  <p className="font-medium text-slate-900">{referral.patient_name || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Age / Gender</p>
-                  <p className="font-medium text-slate-900">
-                    {referral.patient_age || 'N/A'} / {(referral.patient_gender || referral.gender)?.charAt(0).toUpperCase() || 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Specialty Required</p>
-                  <p className="font-medium text-slate-900">{referral.specialty?.replace(/_/g, ' ') || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Receiving Facility</p>
-                  <p className="font-medium text-slate-900">{referral.receiving_facility_name || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 mb-1">Reason for Referral</p>
-                  <p className="font-medium text-slate-900">{referral.reason || 'N/A'}</p>
-                </div>
+            <CardContent className="space-y-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <InfoRow label="Patient name" value={referral.patient_name} />
+                <InfoRow
+                  label="Age / gender"
+                  value={`${referral.patient_age ?? 'N/A'} / ${
+                    referral.patient_gender
+                      ? referral.patient_gender.charAt(0).toUpperCase() +
+                        referral.patient_gender.slice(1)
+                      : 'N/A'
+                  }`}
+                />
+                <InfoRow
+                  label="Specialty"
+                  value={referral.specialty?.replace(/_/g, ' ')}
+                />
+                <InfoRow label="Receiving facility" value={referral.receiving_facility_name} />
+                <InfoRow label="Reason for referral" value={referral.reason} />
+                <InfoRow
+                  label="Follow-up"
+                  value={
+                    referral.follow_up_required
+                      ? `Required${referral.follow_up_due_date ? ` · due ${formatDate(referral.follow_up_due_date)}` : ''}`
+                      : 'Not required'
+                  }
+                />
               </div>
 
               {referral.clinical_summary && (
-                <div className="mt-4">
-                  <p className="text-xs text-slate-500 mb-2">Clinical Summary</p>
-                  <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
-                    <p className="text-sm text-slate-700">{referral.clinical_summary}</p>
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Clinical summary
+                  </p>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm leading-relaxed text-slate-700">
+                      {referral.clinical_summary}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {referral.outcome && (
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    Recorded outcome
+                  </p>
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+                    <p className="text-sm leading-relaxed text-emerald-900">
+                      {referral.outcome.summary ||
+                        referral.outcome.diagnosis ||
+                        referral.outcome.outcome_notes ||
+                        'Outcome recorded at the receiving facility.'}
+                    </p>
                   </div>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600">
+                  <Clock className="h-5 w-5" />
+                </span>
+                <div>
+                  <CardTitle>Workflow timeline</CardTitle>
+                  <CardDescription>Audit trail of every recorded event</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <ReferralTimeline events={referral.events || []} />
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Referral Closure Intelligence Panel */}
-        <div>
+        {/* Closure intelligence */}
+        <div className="space-y-4">
           <Card>
             <CardHeader>
               <div className="flex items-start gap-3">
-                <ShieldCheck className="h-5 w-5 text-teal-600 mt-0.5" />
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-50 text-teal-600">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
                 <div>
-                  <CardTitle className="text-base">Closure Intelligence</CardTitle>
-                  <CardDescription>
-                    Automated workflow validation
-                  </CardDescription>
+                  <CardTitle className="text-base">Closure intelligence</CardTitle>
+                  <CardDescription>Backend-validated workflow rules</CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
               {closureCheck ? (
                 <div className="space-y-4">
-                  {/* Eligibility Status */}
-                  <div className="flex items-center justify-between p-3 rounded-lg border">
+                  <div
+                    className={`flex items-center justify-between gap-2 rounded-xl border p-3 ${
+                      eligible
+                        ? 'border-emerald-200 bg-emerald-50/70'
+                        : 'border-rose-200 bg-rose-50/70'
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
-                      {closureCheck.eligible_for_closure ? (
-                        <>
-                          <CheckCircle className="h-4 w-4 text-emerald-600" />
-                          <span className="font-medium text-emerald-900 text-sm">Eligible for Closure</span>
-                        </>
+                      {eligible ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
                       ) : (
-                        <>
-                          <AlertCircle className="h-4 w-4 text-rose-600" />
-                          <span className="font-medium text-rose-900 text-sm">Blocked from Closure</span>
-                        </>
+                        <AlertCircle className="h-4 w-4 text-rose-600" />
                       )}
+                      <span
+                        className={`text-sm font-semibold ${
+                          eligible ? 'text-emerald-900' : 'text-rose-900'
+                        }`}
+                      >
+                        {eligible ? 'Eligible for closure' : 'Closure blocked'}
+                      </span>
                     </div>
-                    {closureCheck.eligible_for_closure ? (
-                      <Button size="sm" onClick={handleCloseReferral}>
-                        <Shield className="h-3.5 w-3.5 mr-1.5" />
+                    {eligible && referral.status !== 'closed' && (
+                      <Button size="sm" loading={closing} onClick={handleCloseReferral}>
+                        <Shield className="h-3.5 w-3.5" />
                         Close
                       </Button>
-                    ) : (
-                      <Badge variant="danger" size="sm">Action Required</Badge>
+                    )}
+                    {referral.status === 'closed' && (
+                      <Badge variant="success" size="sm" dot>
+                        Closed
+                      </Badge>
                     )}
                   </div>
 
-                  {/* Completed Actions */}
-                  {referral.status !== 'draft' && referral.status !== 'issued' && (
+                  {closureCheck.missing_actions?.length > 0 && (
                     <div>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Completed</h4>
-                      <div className="space-y-1.5">
-                        {referral.status !== 'acknowledged' && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <CheckCircle className="h-3.5 w-3.5 text-teal-600" />
-                            <span className="text-slate-600">Referral acknowledged</span>
-                          </div>
-                        )}
-                        {(referral.status === 'arrived' || referral.status === 'outcome_recorded' || referral.status === 'closed' || referral.status === 'back_referral_completed') && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <User className="h-3.5 w-3.5 text-teal-600" />
-                            <span className="text-slate-600">Patient arrived</span>
-                          </div>
-                        )}
-                        {referral.status === 'outcome_recorded' && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <Heart className="h-3.5 w-3.5 text-teal-600" />
-                            <span className="text-slate-600">Outcome recorded</span>
-                          </div>
-                        )}
-                        {referral.status === 'closed' && (
-                          <div className="flex items-center gap-2 text-xs">
-                            <Activity className="h-3.5 w-3.5 text-teal-600" />
-                            <span className="text-slate-600">Referral closed</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Missing Actions */}
-                  {closureCheck.missing_actions && closureCheck.missing_actions.length > 0 && (
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Missing Actions</h4>
-                      <div className="space-y-1.5">
-                        {closureCheck.missing_actions.map((action, idx) => {
-                          const actionLabels = {
-                            OUTCOME_NOT_RECORDED: 'Treatment outcome',
-                            BACK_REFERRAL_PENDING: 'Back-referral',
-                            FOLLOW_UP_PENDING: 'Follow-up task',
-                          }
-                          const actionIcons = {
-                            OUTCOME_NOT_RECORDED: Heart,
-                            BACK_REFERRAL_PENDING: Shield,
-                            FOLLOW_UP_PENDING: Calendar,
-                          }
-                          const Icon = actionIcons[action] || AlertCircle
+                      <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                        Required before closure
+                      </h4>
+                      <ul className="space-y-1.5">
+                        {closureCheck.missing_actions.map((action) => {
+                          const Icon = MISSING_ACTION_ICONS[action] || AlertCircle
                           return (
-                            <div key={idx} className="flex items-center gap-2 text-xs text-slate-600">
-                              <Icon className="h-3.5 w-3.5" />
-                              <span>{actionLabels[action] || action}</span>
-                            </div>
+                            <li
+                              key={action}
+                              className="flex items-center gap-2 text-xs text-slate-700"
+                            >
+                              <Icon className="h-3.5 w-3.5 text-amber-600" />
+                              {MISSING_ACTION_LABELS[action] || action}
+                            </li>
                           )
                         })}
-                      </div>
+                      </ul>
                     </div>
                   )}
 
-                  {/* Responsible Party */}
                   {(closureCheck.responsible_facility || closureCheck.responsible_role) && (
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                      <h4 className="text-xs font-semibold text-amber-800 mb-1.5">Responsible Party</h4>
-                      <div className="text-xs text-amber-700">
-                        <p><span className="font-medium">Facility:</span> {closureCheck.responsible_facility || 'N/A'}</p>
-                        <p><span className="font-medium">Role:</span> {closureCheck.responsible_role || 'N/A'}</p>
-                      </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <h4 className="mb-1.5 text-[11px] font-semibold text-amber-800">
+                        Responsible party
+                      </h4>
+                      <p className="text-xs text-amber-700">
+                        {closureCheck.responsible_facility || 'N/A'} ·{' '}
+                        {closureCheck.responsible_role || 'N/A'}
+                      </p>
                     </div>
                   )}
 
-                  {/* Next Steps */}
                   {closureCheck.explanation && (
-                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                      <h4 className="text-xs font-semibold text-slate-900 mb-1.5">Next Steps</h4>
-                      <p className="text-xs text-slate-600">{closureCheck.explanation}</p>
-                    </div>
+                    <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-relaxed text-slate-600">
+                      {closureCheck.explanation}
+                    </p>
                   )}
                 </div>
               ) : (
-                <div className="text-center py-4">
-                  <Clock className="h-6 w-6 text-slate-400 mx-auto mb-1.5" />
-                  <p className="text-xs text-slate-500">Loading closure check...</p>
+                <div className="py-4 text-center">
+                  <Clock className="mx-auto mb-1.5 h-6 w-6 text-slate-400" />
+                  <p className="text-xs text-slate-500">Closure check unavailable.</p>
+                  <button
+                    type="button"
+                    onClick={fetchReferralDetails}
+                    className="mt-2 text-xs font-semibold text-teal-600 hover:text-teal-700"
+                  >
+                    Run check again
+                  </button>
                 </div>
               )}
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Next actions</CardTitle>
+              <CardDescription>Move the referral forward</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {isHospital && ['issued', 'pending_ack'].includes(referral.status) && (
+                <Button
+                  variant="outline"
+                  fullWidth
+                  className="justify-start"
+                  onClick={() => navigate('/hospital-dashboard')}
+                >
+                  <Stethoscope className="h-4 w-4" />
+                  Open intake queue
+                </Button>
+              )}
+
+              {isHospital && ['issued', 'acknowledged'].includes(referral.status) && (
+                <Button
+                  variant="outline"
+                  fullWidth
+                  className="justify-start"
+                  onClick={() => navigate(`/hospital/arrival/${id}`)}
+                >
+                  <User className="h-4 w-4" />
+                  Record patient arrival
+                </Button>
+              )}
+
+              {isHospital && referral.status === 'arrived' && (
+                <Button
+                  variant="outline"
+                  fullWidth
+                  className="justify-start"
+                  onClick={() => navigate(`/outcomes/${id}`)}
+                >
+                  <Heart className="h-4 w-4" />
+                  Record treatment outcome
+                </Button>
+              )}
+
+              {isHospital && !terminal && (
+                <Button
+                  variant="outline"
+                  fullWidth
+                  className="justify-start"
+                  onClick={() => navigate(`/back-referral/${id}`)}
+                >
+                  <Shield className="h-4 w-4" />
+                  Create back-referral
+                </Button>
+              )}
+
+              {!isHospital && ['issued', 'pending_ack'].includes(referral.status) && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  <p className="text-xs leading-relaxed text-amber-800">
+                    This referral is waiting for the receiving facility to acknowledge it. No
+                    action is required from the referring PHC right now.
+                  </p>
+                </div>
+              )}
+
+              <Button
+                variant="outline"
+                fullWidth
+                className="justify-start"
+                onClick={() => navigate('/follow-ups')}
+              >
+                <Activity className="h-4 w-4" />
+                Follow-up workspace
+              </Button>
+            </CardContent>
+          </Card>
         </div>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2">
-        {(referral.status === 'issued' || referral.status === 'acknowledged') && (
-          <Button onClick={() => navigate(`/hospital/arrival/${id}`)}>
-            <User className="h-4 w-4" />
-            Record Patient Arrival
-          </Button>
-        )}
-
-        {referral.status === 'arrived' && (
-          <Button onClick={() => navigate(`/outcomes/${id}`)}>
-            <Heart className="h-4 w-4" />
-            Record Treatment Outcome
-          </Button>
-        )}
-
-        {!['closed', 'cancelled', 'rejected'].includes(referral.status) && (
-          <Button variant="outline" onClick={() => navigate(`/back-referral/${id}`)}>
-            <Shield className="h-4 w-4" />
-            Create Back Referral
-          </Button>
-        )}
-
-        <Button variant="outline" onClick={() => navigate(`/qr/${id}`)}>
-          <FileText className="h-4 w-4" />
-          View QR Reference
-        </Button>
-
-        {closureCheck?.eligible_for_closure && referral.status !== 'closed' && (
-          <Button onClick={handleCloseReferral} variant="secondary">
-            <ShieldCheck className="h-4 w-4" />
-            Close Referral
-          </Button>
-        )}
       </div>
     </div>
   )

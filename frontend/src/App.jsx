@@ -1,7 +1,12 @@
 import React from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { dashboardPathForRole } from './utils/roleRoutes'
 import Login from './pages/Login'
+import LandingPage from './pages/LandingPage'
+import Register from './pages/auth/Register'
+import ForgotPassword from './pages/auth/ForgotPassword'
+import ResetPassword from './pages/auth/ResetPassword'
 import Layout from './layouts/Layout'
 import PHDashboard from './pages/PHC/PHDashboard'
 import HospitalDashboard from './pages/Hospital/HospitalDashboard'
@@ -17,95 +22,120 @@ import QRReferenceView from './pages/QR/QRReferenceView'
 import Settings from './pages/Settings/Settings.jsx'
 import PatientDetails from './pages/Patients/PatientDetails'
 
-// Protected Route Component
-function ProtectedRoute({ children, user }) {
+// Protected Route Component - uses AuthContext
+function ProtectedRoute({ children }) {
+  const { user, loading } = useAuth()
+  if (loading) return null // or a spinner
   if (!user) {
     return <Navigate to="/login" replace />
   }
   return children
 }
 
+// Public landing route: signed-in users go straight to their dashboard.
+function LandingRoute() {
+  const { user, profile, loading } = useAuth()
+  if (loading) return null
+  if (user) {
+    return <Navigate to={dashboardPathForRole(profile?.role)} replace />
+  }
+  return <LandingPage />
+}
+
+// Sends a signed-in user to the dashboard that matches their role.
+function DashboardRedirect() {
+  const { profile } = useAuth()
+  return <Navigate to={dashboardPathForRole(profile?.role)} replace />
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        <Route path="/" element={<LandingRoute />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
 
         <Route element={<Layout />}>
-          <Route path="/" element={<Navigate to="/phc-dashboard" replace />} />
-          <Route path="/dashboard" element={<Navigate to="/phc-dashboard" replace />} />
+          <Route path="/dashboard" element={
+            <ProtectedRoute>
+              <DashboardRedirect />
+            </ProtectedRoute>
+          } />
           <Route path="/phc-dashboard" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <PHDashboard />
             </ProtectedRoute>
           } />
           <Route path="/referrals" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <ReferralList />
             </ProtectedRoute>
           } />
           <Route path="/referrals/new" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <CreateReferral />
             </ProtectedRoute>
           } />
           <Route path="/referrals/:id" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <ReferralDetails />
             </ProtectedRoute>
           } />
           <Route path="/patients" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <PatientDetails />
             </ProtectedRoute>
           } />
           <Route path="/hospital/intake" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <HospitalDashboard />
             </ProtectedRoute>
           } />
           <Route path="/hospital-dashboard" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <HospitalDashboard />
             </ProtectedRoute>
           } />
           <Route path="/hospital/arrival/:referralId" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <PatientArrival />
             </ProtectedRoute>
           } />
           <Route path="/outcomes/:referralId" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <OutcomeRecording />
             </ProtectedRoute>
           } />
           <Route path="/back-referral/:referralId" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <BackReferralManagement />
             </ProtectedRoute>
           } />
           <Route path="/follow-ups" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <FollowUpWorkspace />
             </ProtectedRoute>
           } />
           <Route path="/qr/:referralId" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <QRReferenceView />
             </ProtectedRoute>
           } />
           <Route path="/supervisor" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <SupervisorDashboard />
             </ProtectedRoute>
           } />
           <Route path="/supervisor-dashboard" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <SupervisorDashboard />
             </ProtectedRoute>
           } />
           <Route path="/settings" element={
-            <ProtectedRoute user={null}>
+            <ProtectedRoute>
               <Settings />
             </ProtectedRoute>
           } />

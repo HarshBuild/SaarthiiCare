@@ -1,77 +1,98 @@
-import React, { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Stethoscope, Mail, Lock, Shield, Building2 as HospitalIcon } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import {
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+  Stethoscope,
+  Building2,
+  ShieldCheck,
+  AlertCircle,
+  ArrowRight,
+} from 'lucide-react'
 import Button from '../components/ui/Button'
 import Input from '../components/ui/Input'
 import Alert from '../components/ui/Alert'
+import AuthShell from '../components/auth/AuthShell'
 import { useAuth } from '../contexts/AuthContext'
 import { AuthClient } from '../services/authService'
+import { dashboardPathForRole } from '../utils/roleRoutes'
+import { validateEmail, validatePassword } from '../utils/authValidation'
+
+const DEMO_PASSWORD = 'Password123!'
+
+const DEMO_ACCOUNTS = [
+  {
+    role: 'phc_staff',
+    name: 'PHC Staff',
+    email: 'priya.sharma@saarthii.in',
+    icon: Building2,
+    description: 'Create and track referrals',
+  },
+  {
+    role: 'hospital_staff',
+    name: 'Hospital',
+    email: 'ravi.kumar@saarthii.in',
+    icon: Stethoscope,
+    description: 'Receive and treat referrals',
+  },
+  {
+    role: 'supervisor',
+    name: 'Supervisor',
+    email: 'anjali.reddy@saarthii.in',
+    icon: ShieldCheck,
+    description: 'Monitor district performance',
+  },
+]
 
 export default function Login({ onLogin }) {
-  const { signIn, supabaseAvailable } = useAuth()
-  const [email, setEmail] = useState('priya.sharma@saarthii.in')
-  const [password, setPassword] = useState('Password123!')
+  const { signIn, supabaseAvailable, user, loading: authLoading, adoptLegacySession } = useAuth()
+  const navigate = useNavigate()
+
+  const [email, setEmail] = useState(DEMO_ACCOUNTS[0].email)
+  const [password, setPassword] = useState(DEMO_PASSWORD)
+  const [showPassword, setShowPassword] = useState(false)
+  const [fieldErrors, setFieldErrors] = useState({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const roleOptions = [
-    { 
-      role: 'phc_staff', 
-      name: 'PHC Staff', 
-      icon: HospitalIcon, 
-      email: 'priya.sharma@saarthii.in',
-      description: 'Primary Health Centre staff for creating referrals'
-    },
-    { 
-      role: 'hospital_staff', 
-      name: 'Hospital Specialist', 
-      icon: Stethoscope, 
-      email: 'ravi.kumar@saarthii.in',
-      description: 'Specialists receiving and treating referrals'
-    },
-    { 
-      role: 'supervisor', 
-      name: 'District Supervisor', 
-      icon: Shield, 
-      email: 'anjali.reddy@saarthii.in',
-      description: 'Monitor referral flow and quality metrics'
-    },
-  ]
+  useEffect(() => {
+    if (!authLoading && user) {
+      navigate('/dashboard', { replace: true })
+    }
+  }, [authLoading, user, navigate])
 
-  const navigate = useNavigate()
-
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async (event) => {
+    event.preventDefault()
     setError('')
-    setLoading(true)
 
+    const nextErrors = {
+      email: validateEmail(email),
+      password: validatePassword(password),
+    }
+    setFieldErrors(nextErrors)
+    if (nextErrors.email || nextErrors.password) {
+      return
+    }
+
+    setLoading(true)
     try {
       let userProfile = null
       if (supabaseAvailable) {
-        userProfile = await signIn(email, password)
+        userProfile = await signIn(email.trim(), password)
       } else {
-        const { access_token, user } = await AuthClient.login(email, password)
-        localStorage.setItem('saarthii_token', access_token)
-        localStorage.setItem('saarthii_user', JSON.stringify(user))
-        userProfile = user
+        const { access_token, user: legacyUser } = await AuthClient.login(email.trim(), password)
+        adoptLegacySession(legacyUser, access_token)
+        userProfile = legacyUser
       }
 
-      if (onLogin) {
-        onLogin(userProfile)
-      }
-
-      const destination =
-        userProfile?.role === 'hospital_staff'
-          ? '/hospital-dashboard'
-          : userProfile?.role === 'supervisor' || userProfile?.role === 'admin'
-          ? '/supervisor-dashboard'
-          : '/phc-dashboard'
-
-      navigate(destination)
+      if (onLogin) onLogin(userProfile)
+      navigate(dashboardPathForRole(userProfile?.role), { replace: true })
     } catch (err) {
       const detail = err.response?.data?.detail || err?.message
       setError(
-        typeof detail === 'string'
+        typeof detail === 'string' && detail.length > 0
           ? detail
           : 'Unable to sign in. Please check your credentials.',
       )
@@ -80,132 +101,127 @@ export default function Login({ onLogin }) {
     }
   }
 
-  const handleRoleSelect = (roleEmail) => {
-    setEmail(roleEmail)
+  const fillDemo = (account) => {
+    setEmail(account.email)
+    setPassword(DEMO_PASSWORD)
+    setFieldErrors({})
+    setError('')
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-teal-50/20 flex items-center justify-center p-4 lg:p-8">
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 rounded-full bg-teal-200/30 blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 rounded-full bg-blue-200/30 blur-3xl" />
-      </div>
+    <AuthShell
+      title="Sign in"
+      subtitle="Access the referral coordination workspace."
+      footer={
+        <div className="space-y-4">
+          <p className="text-center text-sm text-slate-500">
+            New to SaarthiiCare?{' '}
+            <Link to="/register" className="font-semibold text-teal-600 hover:text-teal-700">
+              Create an account
+            </Link>
+          </p>
+          <p className="text-center text-xs text-slate-400">
+            <Link to="/" className="hover:text-slate-600">
+              ← Back to home
+            </Link>
+          </p>
+        </div>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        {!supabaseAvailable && (
+          <Alert
+            variant="warning"
+            title="Supabase not configured"
+            message="Live sign-in needs VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY in frontend/.env. Until then, demo accounts use the legacy backend login."
+          />
+        )}
 
-      <div className="relative w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
-        {/* Left Side - Logo & Brand */}
-        <div className="flex flex-col items-center lg:items-start justify-center text-center lg:text-left space-y-8">
-          <div className="flex items-center gap-4 mb-6">
-            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 to-teal-600 text-white shadow-xl shadow-teal-500/25">
-              <Shield className="h-8 w-8" />
-            </div>
-            <h1 className="text-4xl lg:text-5xl font-bold text-slate-900 leading-tight">
-              SAARTHII
-            </h1>
+        {error && <Alert variant="error" title="Sign in failed" message={error} />}
+
+        <Input
+          label="Email address"
+          type="email"
+          placeholder="you@facility.in"
+          autoComplete="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          icon={Mail}
+          error={fieldErrors.email}
+          required
+        />
+
+        <div>
+          <div className="relative">
+            <Input
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Enter your password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              icon={Lock}
+              error={fieldErrors.password}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-[2.15rem] rounded-md p-1 text-slate-400 hover:text-slate-600"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
-          
-          <div className="space-y-4 max-w-md lg:max-w-none">
-            <h2 className="text-2xl lg:text-3xl font-bold text-slate-900">
-              Closed-Loop Healthcare Referral System
-            </h2>
-            <p className="text-slate-600 text-lg leading-relaxed">
-              Seamless referral coordination between Primary Health Centres, hospitals, and district supervisors. 
-              Track, manage, and close patient referrals with clinical outcomes.
-            </p>
-            
-            <div className="hidden lg:block mt-8 p-6 rounded-2xl bg-white/60 backdrop-blur-sm border border-slate-200/50">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Demo Accounts</h3>
-              <div className="space-y-2">
-                {roleOptions.map((option) => (
-                  <div key={option.role} className="text-xs text-slate-500">
-                    <span className="font-medium text-teal-600 block" onClick={() => handleRoleSelect(option.email)}>{option.name}</span>
-                    {option.email}
-                  </div>
-                ))}
-              </div>
-            </div>
+          <div className="mt-2 flex justify-end">
+            <Link
+              to="/forgot-password"
+              className="text-xs font-semibold text-teal-600 hover:text-teal-700"
+            >
+              Forgot password?
+            </Link>
           </div>
         </div>
 
-        {/* Right Side - Login Form */}
-        <div className="relative">
-          <div className="glass-panel rounded-2xl shadow-2xl border border-slate-200 p-6 lg:p-8">
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-slate-900 mb-2">Sign In</h2>
-              <p className="text-slate-500">Enter your healthcare credentials</p>
-            </div>
+        <Button type="submit" variant="gradient" size="lg" fullWidth loading={loading}>
+          {loading ? 'Signing in…' : 'Sign in'}
+          {!loading && <ArrowRight className="h-4 w-4" />}
+        </Button>
+      </form>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {error && (
-                <Alert
-                  variant="danger"
-                  title="Login Failed"
-                  message={error}
-                  dismissible
-                />
-              )}
-
-              <div>
-                <Input
-                  type="email"
-                  placeholder="Email address"
-                  aria-label="Email address"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  icon={Mail}
-                  required
-                />
-              </div>
-
-              <div>
-                <Input
-                  type="password"
-                  placeholder="Password"
-                  aria-label="Password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  icon={Lock}
-                  required
-                />
-              </div>
-
-              <div className="text-xs text-slate-500">
-                <p>Demo accounts (all use password: <span className="font-medium text-teal-600">Password123!</span>)</p>
-              </div>
-
-              <Button type="submit" loading={loading} className="w-full">
-                Sign in
-              </Button>
-            </form>
-
-            {/* Mobile: Quick Role Selector */}
-            <div className="mt-8 pt-6 border-t border-slate-200 lg:hidden">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Quick Sign In As</h3>
-              <div className="grid grid-cols-3 gap-2">
-                {roleOptions.map((option) => {
-                  const Icon = option.icon
-                  return (
-                    <button
-                      key={option.role}
-                      type="button"
-                      onClick={() => {
-                        setEmail(option.email)
-                        setPassword('Password123!')
-                      }}
-                      className="flex flex-col items-center gap-1 p-3 rounded-xl bg-slate-50 hover:bg-slate-100 transition-colors"
-                    >
-                      <Icon className="h-5 w-5 text-teal-600" />
-                      <span className="text-[10px] font-medium text-slate-600 text-center">{option.name.split(' ')[0]}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
+      {supabaseAvailable && (
+        <div className="mt-7">
+          <div className="mb-3 flex items-center gap-3">
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">
+              Demo accounts
+            </span>
+            <span className="h-px flex-1 bg-slate-200" />
           </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {DEMO_ACCOUNTS.map((account) => {
+              const Icon = account.icon
+              return (
+                <button
+                  key={account.role}
+                  type="button"
+                  onClick={() => fillDemo(account)}
+                  className="flex flex-col items-start gap-1 rounded-xl border border-slate-200 bg-slate-50/60 p-3 text-left transition-colors hover:border-teal-300 hover:bg-teal-50/50"
+                >
+                  <Icon className="h-4 w-4 text-teal-600" />
+                  <span className="text-xs font-semibold text-slate-800">{account.name}</span>
+                  <span className="text-[10px] leading-tight text-slate-500">{account.description}</span>
+                </button>
+              )
+            })}
+          </div>
+          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-400">
+            <AlertCircle className="h-3.5 w-3.5" />
+            Demo password for every account: <span className="font-semibold text-slate-600">{DEMO_PASSWORD}</span>
+          </p>
         </div>
-      </div>
-    </div>
+      )}
+    </AuthShell>
   )
 }
