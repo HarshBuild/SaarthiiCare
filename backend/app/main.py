@@ -9,6 +9,7 @@ from app.api.hospital import router as hospital_router
 from app.api.followup import router as followup_router
 from app.api.supervisor import router as supervisor_router
 from app.api.storage import router as storage_router
+from app.api.appointments import router as appointments_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
@@ -36,6 +37,7 @@ app.include_router(hospital_router, prefix=settings.API_V1_STR)
 app.include_router(followup_router, prefix=settings.API_V1_STR)
 app.include_router(supervisor_router, prefix=settings.API_V1_STR)
 app.include_router(storage_router, prefix=settings.API_V1_STR)
+app.include_router(appointments_router, prefix=settings.API_V1_STR)
 
 @app.get("/", tags=["Root"])
 async def root():
