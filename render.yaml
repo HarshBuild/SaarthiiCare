@@ -16,11 +16,12 @@ services:
       - key: SECRET_KEY
         generateValue: true
 
-  # --- Frontend: Vite ---
-  - type: static
+  # --- Frontend: Vite (Static Site hosted via Web service config) ---
+  - type: web
     name: saarthii-web
+    runtime: static
     buildCommand: cd frontend && npm install && npm run build
-    publishPath: frontend/dist
+    staticPublishPath: frontend/dist
     routes:
       - type: rewrite
         source: /*
