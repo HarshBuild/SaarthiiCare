@@ -2,10 +2,10 @@ services:
   # --- Backend: FastAPI ---
   - type: web
     name: saarthii-api
+    rootDir: backend
     runtime: python
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    rootDirectory: backend
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
@@ -16,12 +16,13 @@ services:
       - key: SECRET_KEY
         generateValue: true
 
-  # --- Frontend: Vite (Static Site hosted via Web service config) ---
+  # --- Frontend: Vite ---
   - type: web
     name: saarthii-web
+    rootDir: frontend
     runtime: static
-    buildCommand: cd frontend && npm install && npm run build
-    staticPublishPath: frontend/dist
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
     routes:
       - type: rewrite
         source: /*
